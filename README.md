@@ -5,9 +5,16 @@ automation3.py Measure thyroid area from pictures and compare with handscored da
 thyroidarea.ipynb Stats
 environment.yml Libraries to run things
 ## Usage
-**Automatic measurement:** edit the file paths near the bottom of automation3.py, then run:
-python automation3.py
-Basically it saves a results CSV, outline pictures of each photo, and a comparison with the hand-scored areas (CSV and graph). 
+thyroid-measure <photo folder> --out <output folder> --handscore <Excel file> 
 **Statistics:** open thyroidarea.ipynb in VS Code or JupyterLab, set the data file path in the first cell, and click **Run All**.
 ## Data
 Photos and data files are not included in this repository.
+## Setup
+1. Install [Anaconda](https://www.anaconda.com/download) if you don't have it.
+2. Create and activate the environment:
+
+      bash
+   conda env create -f environment.yml
+   conda activate thyroid-env
+   pip install -e . --no-deps
+   
