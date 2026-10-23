@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thyroid-project"
+version = "0.1.0"
+description = "Automated thyroid area measurement and comparison"
+requires-python = ">=3.11"
+dependencies = ["numpy", "pandas", "openpyxl", "matplotlib", "scipy", "statsmodels", "opencv-python"]
+
+[tool.setuptools]
+packages = ["thyroid_project"]
+
+[project.scripts]
+thyroid-measure = "thyroid_project.cli:main"

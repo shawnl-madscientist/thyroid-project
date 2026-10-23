@@ -302,158 +302,26 @@ def measure_and_visualize(image_path, output_dir):
     return total_px, to_mm2(total_px), right_px, to_mm2(right_px), left_px, to_mm2(left_px)
 
 
-# ── Batch process ──────────────────────────────────────────────────────────────
-# STEP 5: Run everything on every photo in a folder and save one spreadsheet.
-
-# Where the photos are, and where to save the outline pictures.
-# (Change these two lines to match your computer.)
-folder = "/Users/shawnlam/Everything GRAD/Thyroid /Hypo Pilot-selected"
-overlay_dir = "/Users/shawnlam/thyroid_overlays"
-# Create the output folder if it does not already exist.
-os.makedirs(overlay_dir, exist_ok=True)
-
-# An empty list that will collect one row of results per photo.
-results = []
-
-# Go through the files in the folder in alphabetical order.
-for filename in sorted(os.listdir(folder)):
-    # Only process .jpg photos.
-    if filename.endswith(".jpg"):
-        path = os.path.join(folder, filename)
-        # Measure this photo (this also saves its outline pictures).
-        total_px, total_mm2, r_px, r_mm2, l_px, l_mm2 = measure_and_visualize(path, overlay_dir)
-        # Add this photo's results to the list as one row.
-        results.append({
-            "filename": filename,
-            "total_area_mm2": total_mm2,
-            "right_thyroid_mm2": r_mm2,
-            "left_thyroid_mm2": l_mm2,
-            "total_area_pixels": total_px,
-            "right_thyroid_pixels": r_px,
-            "left_thyroid_pixels": l_px
-        })
-        # Print a short summary on screen so you can follow the progress.
-        if r_mm2 is not None or l_mm2 is not None:
-            print(f"{filename}: Right={r_mm2} mm2 | Left={l_mm2} mm2")
-        else:
-            # No scale was found, so only pixel sizes are available.
-            print(f"{filename}: no scale | Right={r_px}px Left={l_px}px")
-
-# Turn the list of rows into a table and save it as a spreadsheet (CSV) file.
-df = pd.DataFrame(results)
-df.to_csv("/Users/shawnlam/thyroid_measurements.csv", index=False)
-print(f"\nDone. Results → thyroid_measurements.csv")
-print(f"Check overlays in {overlay_dir}")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# STEP 6: Compare the automatic measurements with the hand-scored areas
-#
-# The hand-scored areas (measured by eye, by tracing each lobe) are treated as the
-# reference. For each lobe we ask: how close is the automatic number to it?
-# Each automatic number is matched to its hand-scored partner using the
-# animal's ID (subject) and the side (left or right).
-# ══════════════════════════════════════════════════════════════════════════════
-
-# Where the hand-scored sheet is, and where to save the comparison results.
-# (Change these lines to match your computer.)
-handscore_file = "/Users/shawnlam/Everything GRAD/Thyroid /Dissected_thyroid_glands/Output_thyroid.xlsx"
-comparison_csv = "/Users/shawnlam/thyroid_comparison.csv"
-comparison_plot = "/Users/shawnlam/thyroid_comparison.png"
-
-
-def get_subject(name):
-    # Pull the animal's ID out of a photo name.
-    # Example: "6_VhMC_M2_SP103.jpg" -> "SP103" (the last part, without ".jpg").
-    name = str(name).strip().replace(".jpg", "")
-    return name.split("_")[-1]
-
-
-# ── 6a. Read the hand-scored areas ────────────────────────────────────────────
-# Sheet1 has one row per lobe: the photo name, the side (L or R) and the area.
-hand = pd.read_excel(handscore_file, sheet_name="Sheet1")[["Image", "Side", "Area"]]
-hand = hand.rename(columns={"Area": "handscore_mm2"})
-# Make an animal ID column from the photo name, and tidy the side letters.
-hand["Subject"] = hand["Image"].apply(get_subject)
-hand["Side"] = hand["Side"].str.strip().str.upper()
-hand = hand[["Subject", "Side", "handscore_mm2"]]
-
-# ── 6b. Reshape the automatic results ─────────────────────────────────────────
-# The automatic table has one row per photo, with a left column and a right column.
-# Stack it so there is one row per lobe, the same layout as the hand-scored table.
-auto = df.melt(id_vars="filename",
-               value_vars=["left_thyroid_mm2", "right_thyroid_mm2"],
-               var_name="Side", value_name="automated_mm2")
-# Turn the column names into the side letters used in the hand-scored sheet.
-auto["Side"] = auto["Side"].map({"left_thyroid_mm2": "L", "right_thyroid_mm2": "R"})
-auto["Subject"] = auto["filename"].apply(get_subject)
-auto = auto[["Subject", "Side", "automated_mm2"]]
-
-# ── 6c. Match the two tables by animal and side ───────────────────────────────
-# "how='left'" keeps every hand-scored lobe, even if the automatic method has
-# no number for it (those rows will have an empty automated_mm2).
-compare = hand.merge(auto, on=["Subject", "Side"], how="left")
-
-# How far off is the automatic number from the hand-scored one?
-#   difference     = automatic - hand-scored (positive means the automatic number is bigger)
-#   percent_diff   = that difference as a percentage of the hand-scored area
-compare["difference_mm2"] = compare["automated_mm2"] - compare["handscore_mm2"]
-compare["percent_diff"] = compare["difference_mm2"] / compare["handscore_mm2"] * 100
-
-# Save the lobe-by-lobe comparison so you can open it in Excel.
-compare.to_csv(comparison_csv, index=False)
-
-# ── 6d. How many lobes could be compared? ─────────────────────────────────────
-# Only lobes that have BOTH a hand-scored area and an automatic area can be compared.
-# The automatic area is empty when the ruler scale could not be found in that photo.
-usable = compare.dropna(subset=["handscore_mm2", "automated_mm2"])
-print("\n── Comparison with hand-scored areas ──")
-print(f"Hand-scored lobes:               {len(compare)}")
-print(f"  with an automatic mm2 value:   {compare['automated_mm2'].notna().sum()}")
-print(f"  usable for comparison:         {len(usable)}")
-
-# ── 6e. Summary numbers (only if there are enough lobes) ──────────────────────
-if len(usable) >= 3:
-    # Average difference: do the automatic numbers run too high or too low overall?
-    print(f"Average difference (auto - hand):  {usable['difference_mm2'].mean():.4f} mm2")
-    # Average size of the error, ignoring whether it is too high or too low.
-    print(f"Average size of error:             {usable['difference_mm2'].abs().mean():.4f} mm2")
-    print(f"Average size of error (percent):   {usable['percent_diff'].abs().mean():.1f} %")
-    # Correlation: do big lobes get big numbers and small lobes get small numbers
-    # in both methods? 1 = move together perfectly, 0 = no link at all.
-    # (Pearson looks at the actual values; Spearman looks only at the ranking.)
-    print(f"Correlation (Pearson):             {usable['automated_mm2'].corr(usable['handscore_mm2']):.3f}")
-    print(f"Correlation (Spearman):            {usable['automated_mm2'].corr(usable['handscore_mm2'], method='spearman'):.3f}")
-
-    # Side check: the code labels the lobe on the left of the photo as "right".
-    # If the labels were backwards, matching left to right would fit better.
-    # So we swap the sides and see whether the correlation improves.
-    swapped = auto.copy()
-    swapped["Side"] = swapped["Side"].map({"L": "R", "R": "L"})
-    swap_usable = hand.merge(swapped, on=["Subject", "Side"], how="left").dropna(
-        subset=["handscore_mm2", "automated_mm2"])
-    swap_r = swap_usable["automated_mm2"].corr(swap_usable["handscore_mm2"])
-    # If this number is clearly HIGHER than the Pearson correlation printed above,
-    # the left/right labels may be reversed. If it is similar or lower, they are fine.
-    print(f"Correlation if left/right swapped: {swap_r:.3f}")
-else:
-    print("Too few lobes with both values to calculate summary numbers.")
-
-# ── 6f. Draw a graph of automatic vs hand-scored ──────────────────────────────
-# Each dot is one lobe. The dashed line is "perfect agreement": a dot on the line
-# means the automatic number equals the hand-scored number.
-if len(usable) > 0:
-    fig, ax = plt.subplots(figsize=(5.5, 5.5))
-    ax.scatter(usable["handscore_mm2"], usable["automated_mm2"], color="black", s=25)
-    # Draw the dashed line using the full range of values on both axes.
-    top = max(usable["handscore_mm2"].max(), usable["automated_mm2"].max()) * 1.05
-    ax.plot([0, top], [0, top], linestyle="--", color="gray")
-    ax.set_xlabel("Hand-scored area (mm2)")
-    ax.set_ylabel("Automatic area (mm2)")
-    ax.set_title("Automatic vs hand-scored thyroid area")
-    plt.tight_layout()
-    plt.savefig(comparison_plot, dpi=300)
-    plt.close()
-
-print(f"\nComparison table saved to {comparison_csv}")
-print(f"Graph saved to {comparison_plot}")
+def run_batch(folder, overlay_dir, output_csv):
+    os.makedirs(overlay_dir, exist_ok=True)
+    results = []
+    for filename in sorted(os.listdir(folder)):
+        if filename.endswith(".jpg"):
+            path = os.path.join(folder, filename)
+            total_px, total_mm2, r_px, r_mm2, l_px, l_mm2 = measure_and_visualize(path, overlay_dir)
+            results.append({
+                "filename": filename,
+                "total_area_mm2": total_mm2,
+                "right_thyroid_mm2": r_mm2,
+                "left_thyroid_mm2": l_mm2,
+                "total_area_pixels": total_px,
+                "right_thyroid_pixels": r_px,
+                "left_thyroid_pixels": l_px
+            })
+            if r_mm2 is not None or l_mm2 is not None:
+                print(f"{filename}: Right={r_mm2} mm2 | Left={l_mm2} mm2")
+            else:
+                print(f"{filename}: no scale | Right={r_px}px Left={l_px}px")
+    df = pd.DataFrame(results)
+    df.to_csv(output_csv, index=False)
+    return df
