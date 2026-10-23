@@ -1,0 +1,15 @@
+name: thyroid-env
+channels:
+  - defaults
+  - anaconda
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - openpyxl
+  - matplotlib
+  - scipy
+  - statsmodels
+  - opencv
+  - jupyter
