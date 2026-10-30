@@ -6,10 +6,10 @@ channels:
 dependencies:
   - python=3.11
   - numpy
-  - pandas
+  - pandas>=2.0
   - openpyxl
   - matplotlib
-  - scipy
-  - statsmodels
+  - scipy>=1.11
+  - statsmodels>=0.14
   - opencv
   - jupyter
